@@ -67,6 +67,46 @@ final class LightControllerTests: XCTestCase {
         XCTAssertEqual(controller.colorPresets.last, preset)
     }
 
+    func testSystemSleepOffDoesNotChangeBrightnessColorOrPersistPower() async throws {
+        let defaults = try makeDefaults()
+        defaults.set(true, forKey: "dxlight.isOn")
+        defaults.set(0.42, forKey: "dxlight.brightness")
+        defaults.set(try JSONEncoder().encode(RGBColor.lightBlue), forKey: "dxlight.color")
+        var requests: [PowerCommandRequest] = []
+        let controller = LightController(defaults: defaults) { request in
+            requests.append(request)
+            return RobobloqDeviceSession.defaultDeviceInfo()
+        }
+
+        await controller.prepareForSystemSleep()
+
+        XCTAssertTrue(controller.isOn)
+        XCTAssertEqual(controller.brightness, 0.42)
+        XCTAssertEqual(controller.color, .lightBlue)
+        XCTAssertTrue(defaults.bool(forKey: "dxlight.isOn"))
+        XCTAssertEqual(requests.count, 1)
+        XCTAssertFalse(requests[0].targetOn)
+        XCTAssertFalse(requests[0].animated)
+    }
+
+    func testWakeSetsAndPersistsPowerOn() async throws {
+        let defaults = try makeDefaults()
+        defaults.set(false, forKey: "dxlight.isOn")
+        var requests: [PowerCommandRequest] = []
+        let controller = LightController(defaults: defaults) { request in
+            requests.append(request)
+            return RobobloqDeviceSession.defaultDeviceInfo()
+        }
+
+        await controller.restoreAfterSystemWake()
+
+        XCTAssertTrue(controller.isOn)
+        XCTAssertTrue(defaults.bool(forKey: "dxlight.isOn"))
+        XCTAssertEqual(requests.count, 1)
+        XCTAssertTrue(requests[0].targetOn)
+        XCTAssertTrue(requests[0].animated)
+    }
+
     private func makeDefaults() throws -> UserDefaults {
         let suiteName = "DXLightCoreTests.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))

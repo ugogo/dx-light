@@ -6,6 +6,18 @@ public enum ConnectionStatus: Equatable {
     case error(String)
 }
 
+struct PowerCommandRequest {
+    let device: DiscoveredDevice?
+    let targetOn: Bool
+    let brightness: Double
+    let color: RGBColor
+    let lampsAmount: Int
+    let animated: Bool
+    let fromBrightness: Double
+    let settleDelay: TimeInterval
+    let readsDeviceInfo: Bool
+}
+
 @MainActor
 public final class LightController: ObservableObject {
     @Published public private(set) var status: ConnectionStatus = .searching
@@ -18,6 +30,7 @@ public final class LightController: ObservableObject {
     @Published public private(set) var savedPreset: ColorPreset?
 
     private let defaults: UserDefaults
+    private let powerCommand: (PowerCommandRequest) async throws -> DeviceInfo
     private var deviceInfo: DeviceInfo?
     private var pollTask: Task<Void, Never>?
     private var connectedDevice: DiscoveredDevice?
@@ -28,8 +41,16 @@ public final class LightController: ObservableObject {
     private var appliedBrightness: Double
     private var appliedColor: RGBColor
 
-    public init(defaults: UserDefaults = .standard) {
+    public convenience init(defaults: UserDefaults = .standard) {
+        self.init(defaults: defaults, powerCommand: Self.runPowerCommand)
+    }
+
+    init(
+        defaults: UserDefaults = .standard,
+        powerCommand: @escaping (PowerCommandRequest) async throws -> DeviceInfo
+    ) {
         self.defaults = defaults
+        self.powerCommand = powerCommand
         self.isOn = defaults.bool(forKey: Keys.isOn)
         let initialBrightness = defaults.object(forKey: Keys.brightness) as? Double ?? 0.5
         self.brightness = initialBrightness
@@ -89,6 +110,22 @@ public final class LightController: ObservableObject {
     public func stop() {
         pollTask?.cancel()
         pollTask = nil
+        cancelPendingAdjustments()
+    }
+
+    public func prepareForSystemSleep() async {
+        cancelPendingAdjustments()
+        await sendSystemSleepOff()
+    }
+
+    public func restoreAfterSystemWake() async {
+        cancelPendingAdjustments()
+        isOn = true
+        persistState()
+        await applyPowerState()
+    }
+
+    private func cancelPendingAdjustments() {
         brightnessDebounceTask?.cancel()
         brightnessApplyTask?.cancel()
         scheduledBrightness = nil
@@ -209,40 +246,53 @@ public final class LightController: ObservableObject {
         let fromBrightness = appliedBrightness
 
         do {
-            let info = try await DeviceCommandRunner.withTransport(device: device) { transport, info in
-                if targetOn {
-                    if animated {
-                        try Self.turnOnSmoothly(
-                            using: transport,
-                            lampsAmount: lampsAmount,
-                            color: color,
-                            brightness: brightness
-                        )
-                    } else {
-                        try RobobloqDeviceSession.turnOn(
-                            using: transport,
-                            lampsAmount: lampsAmount,
-                            color: color,
-                            brightness: brightness
-                        )
-                    }
-                } else {
-                    if animated {
-                        try Self.turnOffSmoothly(
-                            using: transport,
-                            lampsAmount: lampsAmount,
-                            color: color,
-                            fromBrightness: fromBrightness
-                        )
-                    } else {
-                        try RobobloqDeviceSession.turnOff(using: transport, lampsAmount: lampsAmount)
-                    }
-                }
-                return info
-            }
+            let info = try await powerCommand(
+                PowerCommandRequest(
+                    device: device,
+                    targetOn: targetOn,
+                    brightness: brightness,
+                    color: color,
+                    lampsAmount: lampsAmount,
+                    animated: animated,
+                    fromBrightness: fromBrightness,
+                    settleDelay: 0.5,
+                    readsDeviceInfo: true
+                )
+            )
             deviceInfo = info
             appliedBrightness = brightness
             appliedColor = color
+        } catch {
+            status = .error(error.localizedDescription)
+            connectedDevice = nil
+        }
+    }
+
+    private func sendSystemSleepOff() async {
+        isBusy = true
+        defer { isBusy = false }
+
+        let device = connectedDevice
+        let brightness = brightness
+        let color = color
+        let lampsAmount = deviceInfo?.lampsAmount ?? RobobloqDeviceSession.defaultLampsAmount
+        let fromBrightness = appliedBrightness
+
+        do {
+            let info = try await powerCommand(
+                PowerCommandRequest(
+                    device: device,
+                    targetOn: false,
+                    brightness: brightness,
+                    color: color,
+                    lampsAmount: lampsAmount,
+                    animated: false,
+                    fromBrightness: fromBrightness,
+                    settleDelay: 0.05,
+                    readsDeviceInfo: false
+                )
+            )
+            deviceInfo = info
         } catch {
             status = .error(error.localizedDescription)
             connectedDevice = nil
@@ -467,6 +517,72 @@ public final class LightController: ObservableObject {
             return true
         }
         return false
+    }
+
+    private static func runPowerCommand(_ request: PowerCommandRequest) async throws -> DeviceInfo {
+        if request.readsDeviceInfo {
+            return try await DeviceCommandRunner.withTransport(
+                device: request.device,
+                settleDelay: request.settleDelay
+            ) { transport, info in
+                try runPowerCommand(request, using: transport)
+                return info
+            }
+        }
+
+        return try await DeviceCommandRunner.run {
+            guard let discovered = request.device ?? DeviceDiscovery.discoverPreferred() else {
+                throw DeviceTransportError.deviceNotFound
+            }
+
+            let transport = DeviceDiscovery.makeTransport(for: discovered)
+            try transport.open()
+            defer { transport.close() }
+
+            if request.settleDelay > 0 {
+                Thread.sleep(forTimeInterval: request.settleDelay)
+            }
+
+            try runPowerCommand(request, using: transport)
+            return RobobloqDeviceSession.defaultDeviceInfo()
+        }
+    }
+
+    private static func runPowerCommand(
+        _ request: PowerCommandRequest,
+        using transport: any DeviceTransport
+    ) throws {
+        if request.targetOn {
+            if request.animated {
+                try turnOnSmoothly(
+                    using: transport,
+                    lampsAmount: request.lampsAmount,
+                    color: request.color,
+                    brightness: request.brightness
+                )
+            } else {
+                try RobobloqDeviceSession.turnOn(
+                    using: transport,
+                    lampsAmount: request.lampsAmount,
+                    color: request.color,
+                    brightness: request.brightness
+                )
+            }
+        } else {
+            if request.animated {
+                try turnOffSmoothly(
+                    using: transport,
+                    lampsAmount: request.lampsAmount,
+                    color: request.color,
+                    fromBrightness: request.fromBrightness
+                )
+            } else {
+                try RobobloqDeviceSession.turnOff(
+                    using: transport,
+                    lampsAmount: request.lampsAmount
+                )
+            }
+        }
     }
 
     private func persistState() {

@@ -21,6 +21,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private var statusItem: NSStatusItem?
     private var popover: NSPopover?
     private var cancellables = Set<AnyCancellable>()
+    private var powerEventTask: Task<Void, Never>?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
@@ -38,6 +39,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         self.popover = popover
 
         controller.start()
+        registerPowerNotifications()
         updateStatusIcon()
 
         controller.objectWillChange
@@ -49,6 +51,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        powerEventTask?.cancel()
+        NSWorkspace.shared.notificationCenter.removeObserver(self)
         controller.stop()
     }
 
@@ -94,6 +98,38 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
 
     func popoverDidShow(_ notification: Notification) {
         popover?.contentViewController?.view.window?.makeKey()
+    }
+
+    private func registerPowerNotifications() {
+        let center = NSWorkspace.shared.notificationCenter
+        center.addObserver(
+            self,
+            selector: #selector(workspaceWillSleep(_:)),
+            name: NSWorkspace.willSleepNotification,
+            object: nil
+        )
+        center.addObserver(
+            self,
+            selector: #selector(workspaceDidWake(_:)),
+            name: NSWorkspace.didWakeNotification,
+            object: nil
+        )
+    }
+
+    @objc private func workspaceWillSleep(_ notification: Notification) {
+        powerEventTask?.cancel()
+        powerEventTask = Task { [controller] in
+            await controller.prepareForSystemSleep()
+            updateStatusIcon()
+        }
+    }
+
+    @objc private func workspaceDidWake(_ notification: Notification) {
+        powerEventTask?.cancel()
+        powerEventTask = Task { [controller] in
+            await controller.restoreAfterSystemWake()
+            updateStatusIcon()
+        }
     }
 
     private func updateStatusIcon() {
