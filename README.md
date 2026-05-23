@@ -38,13 +38,16 @@ swift run dx-light-cli test
 3. Toggle power or adjust brightness
 4. Enable `Open at login` if you want DX Light to launch automatically
 5. Enable `Smooth transitions` if you want short fades for power, brightness, and color changes
-6. Option+click the icon to toggle power without opening the popover
+6. Keep `Turn on when USB connects` enabled if the strip moves between machines through a KVM
+7. Option+click the icon to toggle power without opening the popover
 
 The app polls for the strip every second and reconnects automatically after sleep or USB replug. `npm run start` and `npm run restart` rebuild the app bundle before launching, so local testing uses the current source instead of a stale `dist/DX Light.app`.
 
 `Open at login` uses macOS Login Items. If macOS asks for approval, enable DX Light in System Settings → General → Login Items.
 
 `Smooth transitions` keeps fades short and uses a small number of device writes so the USB connection stays responsive.
+
+`Turn on when USB connects` is useful for KVM setups: when the strip disappears from the Mac and later reconnects, DX Light marks the app state as on and sends the on command automatically. If you prefer reconnects to preserve the previous app power state, turn this off.
 
 ## Troubleshooting
 
@@ -80,6 +83,7 @@ For manual app validation:
 4. Toggle power from the app.
 5. Change brightness and color from the app.
 6. Unplug and replug USB, then confirm the menu reconnects within a few seconds.
+7. With `Turn on when USB connects` enabled, confirm the strip turns on after reconnect.
 
 If the CLI smoke test works but the app does not, first suspect a stale/running app bundle or USB ownership. If both CLI and app fail, check device discovery and whether another process has the HID interface open.
 

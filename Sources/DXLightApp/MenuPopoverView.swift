@@ -140,6 +140,11 @@ struct MenuPopoverView: View {
             }
             .toggleStyle(.switch)
 
+            Toggle(isOn: turnOnWhenUSBConnectsBinding) {
+                Text("Turn on when USB connects")
+            }
+            .toggleStyle(.switch)
+
             if let detail = loginItemController.detail {
                 Text(detail)
                     .font(.caption2)
@@ -184,6 +189,13 @@ struct MenuPopoverView: View {
         Binding(
             get: { controller.smoothTransitions },
             set: { controller.setSmoothTransitions($0) }
+        )
+    }
+
+    private var turnOnWhenUSBConnectsBinding: Binding<Bool> {
+        Binding(
+            get: { controller.turnOnWhenUSBConnects },
+            set: { controller.setTurnOnWhenUSBConnects($0) }
         )
     }
 

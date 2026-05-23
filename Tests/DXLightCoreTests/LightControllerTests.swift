@@ -9,6 +9,7 @@ final class LightControllerTests: XCTestCase {
         defaults.set(0.42, forKey: "dxlight.brightness")
         defaults.set(try JSONEncoder().encode(RGBColor.lightBlue), forKey: "dxlight.color")
         defaults.set(false, forKey: "dxlight.smoothTransitions")
+        defaults.set(false, forKey: "dxlight.turnOnWhenUSBConnects")
 
         let controller = LightController(defaults: defaults)
 
@@ -16,6 +17,7 @@ final class LightControllerTests: XCTestCase {
         XCTAssertEqual(controller.brightness, 0.42)
         XCTAssertEqual(controller.color, .lightBlue)
         XCTAssertFalse(controller.smoothTransitions)
+        XCTAssertFalse(controller.turnOnWhenUSBConnects)
     }
 
     func testSmoothTransitionsDefaultOnAndPersistChanges() throws {
@@ -28,6 +30,18 @@ final class LightControllerTests: XCTestCase {
 
         XCTAssertFalse(controller.smoothTransitions)
         XCTAssertFalse(defaults.bool(forKey: "dxlight.smoothTransitions"))
+    }
+
+    func testTurnOnWhenUSBConnectsDefaultOnAndPersistChanges() throws {
+        let defaults = try makeDefaults()
+        let controller = LightController(defaults: defaults)
+
+        XCTAssertTrue(controller.turnOnWhenUSBConnects)
+
+        controller.setTurnOnWhenUSBConnects(false)
+
+        XCTAssertFalse(controller.turnOnWhenUSBConnects)
+        XCTAssertFalse(defaults.bool(forKey: "dxlight.turnOnWhenUSBConnects"))
     }
 
     func testBrightnessIsClampedAndPersistedWhileOff() throws {

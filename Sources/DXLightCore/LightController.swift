@@ -14,6 +14,7 @@ public final class LightController: ObservableObject {
     @Published public var brightness: Double
     @Published public var color: RGBColor
     @Published public var smoothTransitions: Bool
+    @Published public var turnOnWhenUSBConnects: Bool
     @Published public private(set) var savedPreset: ColorPreset?
 
     private let defaults: UserDefaults
@@ -41,6 +42,7 @@ public final class LightController: ObservableObject {
         }
         self.color = initialColor
         self.smoothTransitions = defaults.object(forKey: Keys.smoothTransitions) as? Bool ?? true
+        self.turnOnWhenUSBConnects = defaults.object(forKey: Keys.turnOnWhenUSBConnects) as? Bool ?? true
         self.appliedBrightness = initialBrightness
         self.appliedColor = initialColor
         if let data = defaults.data(forKey: Keys.savedPreset),
@@ -68,6 +70,12 @@ public final class LightController: ObservableObject {
     public func setSmoothTransitions(_ enabled: Bool) {
         guard smoothTransitions != enabled else { return }
         smoothTransitions = enabled
+        persistState()
+    }
+
+    public func setTurnOnWhenUSBConnects(_ enabled: Bool) {
+        guard turnOnWhenUSBConnects != enabled else { return }
+        turnOnWhenUSBConnects = enabled
         persistState()
     }
 
@@ -175,7 +183,15 @@ public final class LightController: ObservableObject {
         deviceInfo = RobobloqDeviceSession.defaultDeviceInfo()
         status = .connected(discovered)
 
-        if !wasConnected && isOn {
+        guard !wasConnected else { return }
+
+        if turnOnWhenUSBConnects {
+            if !isOn {
+                isOn = true
+                persistState()
+            }
+            await applyPowerState()
+        } else if isOn {
             await applyPowerState()
         }
     }
@@ -460,6 +476,7 @@ public final class LightController: ObservableObject {
             defaults.set(data, forKey: Keys.color)
         }
         defaults.set(smoothTransitions, forKey: Keys.smoothTransitions)
+        defaults.set(turnOnWhenUSBConnects, forKey: Keys.turnOnWhenUSBConnects)
         if let savedPreset, let data = try? JSONEncoder().encode(savedPreset) {
             defaults.set(data, forKey: Keys.savedPreset)
         } else {
@@ -472,6 +489,7 @@ public final class LightController: ObservableObject {
         static let brightness = "dxlight.brightness"
         static let color = "dxlight.color"
         static let smoothTransitions = "dxlight.smoothTransitions"
+        static let turnOnWhenUSBConnects = "dxlight.turnOnWhenUSBConnects"
         static let savedPreset = "dxlight.savedPreset"
     }
 
