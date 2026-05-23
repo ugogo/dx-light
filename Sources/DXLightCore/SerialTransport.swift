@@ -4,12 +4,14 @@ import IOKit
 
 public final class SerialTransport: DeviceTransport {
     public let device: DiscoveredDevice
+    public var unsolicitedInputHandler: ((Data) -> Void)?
     private var fileDescriptor: Int32 = -1
     private var readQueue: [Data] = []
     private let readQueueLock = NSLock()
     private let readerQueue = DispatchQueue(label: "com.dxlight.serial.reader")
     private var readerSource: DispatchSourceRead?
     private let responseDelay: TimeInterval = 0.2
+    private var pendingResponseMessageIDs: Set<UInt8> = []
 
     public init(device: DiscoveredDevice) {
         self.device = device
@@ -67,6 +69,19 @@ public final class SerialTransport: DeviceTransport {
         }
 
         let messageID = data.count > 3 ? data[3] : 0
+        if expectResponse {
+            readQueueLock.lock()
+            pendingResponseMessageIDs.insert(messageID)
+            readQueueLock.unlock()
+        }
+        defer {
+            if expectResponse {
+                readQueueLock.lock()
+                pendingResponseMessageIDs.remove(messageID)
+                readQueueLock.unlock()
+            }
+        }
+
         let written = data.withUnsafeBytes { buffer -> Int in
             Darwin.write(fileDescriptor, buffer.baseAddress, data.count)
         }
@@ -104,10 +119,22 @@ public final class SerialTransport: DeviceTransport {
             let count = Darwin.read(fileDescriptor, &buffer, buffer.count)
             if count <= 0 { break }
             let chunk = Data(buffer.prefix(count))
-            readQueueLock.lock()
-            readQueue.append(chunk)
-            readQueueLock.unlock()
+            routeInput(chunk)
         }
+    }
+
+    private func routeInput(_ data: Data) {
+        let messageID = TransportPacket.messageID(in: data)
+        readQueueLock.lock()
+        let isPendingResponse = messageID.map { pendingResponseMessageIDs.contains($0) } ?? false
+        if isPendingResponse {
+            readQueue.append(data)
+            readQueueLock.unlock()
+            return
+        }
+        readQueueLock.unlock()
+
+        unsolicitedInputHandler?(data)
     }
 
     private func waitForResponse(messageID: UInt8) throws -> Data {

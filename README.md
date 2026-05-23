@@ -6,7 +6,7 @@ A lightweight native macOS menu bar app that controls a Robobloq DX Light monito
 
 - macOS 13 or later
 - Robobloq DX Light strip connected over USB
-- Quit the official `/Applications/DX Light.app` before using this app (only one process can control the strip at a time)
+- Only one process can control the strip at a time; quit the official DX Light app first
 
 ## Build
 
@@ -55,7 +55,7 @@ Expected USB identifiers:
 - HID: vendor `0x1A86`, product `0xFE07`
 - Serial CDC fallback: vendor `0x1A86`, product `0xFE0C`
 
-If control fails with a busy-device error, quit the official DX Light app and any other app that may hold the USB interface.
+If control fails with a busy-device error, close any other app that may hold the USB interface, including the official DX Light app.
 
 ## Distribution / notarization
 

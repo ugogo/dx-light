@@ -4,10 +4,12 @@ import IOKit.hid
 
 public final class HIDTransport: DeviceTransport {
     public let device: DiscoveredDevice
+    public var unsolicitedInputHandler: ((Data) -> Void)?
     private var manager: IOHIDManager?
     private var hidDevice: IOHIDDevice?
     private var responseQueue: [Data] = []
     private let responseLock = NSLock()
+    private var pendingResponseMessageIDs: Set<UInt8> = []
     private var inputReport = [UInt8](repeating: 0, count: 64)
     private var maxOutputReportSize = 64
     private let responseDelay: TimeInterval = 0.2
@@ -87,6 +89,11 @@ public final class HIDTransport: DeviceTransport {
             throw DeviceTransportError.deviceNotFound
         }
 
+        maxOutputReportSize = max(
+            Int(IOHIDDeviceGetProperty(hidDevice, kIOHIDMaxOutputReportSizeKey as CFString) as? Int ?? 64),
+            64
+        )
+
         let openResult = IOHIDDeviceOpen(hidDevice, IOOptionBits(kIOHIDOptionsTypeNone))
         guard openResult == kIOReturnSuccess else {
             IOHIDManagerClose(manager, IOOptionBits(kIOHIDOptionsTypeNone))
@@ -96,18 +103,18 @@ public final class HIDTransport: DeviceTransport {
             throw DeviceTransportError.openFailed("IOHIDDeviceOpen returned \(openResult)")
         }
 
-        maxOutputReportSize = max(
-            Int(IOHIDDeviceGetProperty(hidDevice, kIOHIDMaxOutputReportSizeKey as CFString) as? Int ?? 64),
+        let maxInput = max(
+            Int(IOHIDDeviceGetProperty(hidDevice, kIOHIDMaxInputReportSizeKey as CFString) as? Int ?? 64),
             64
         )
-        inputReport = [UInt8](repeating: 0, count: maxOutputReportSize)
+        inputReport = [UInt8](repeating: 0, count: maxInput)
 
+        installInputCallback(on: hidDevice)
         IOHIDDeviceScheduleWithRunLoop(
             hidDevice,
             runLoopThread.runLoop,
             CFRunLoopMode.defaultMode.rawValue
         )
-        installInputCallback(on: hidDevice)
 
         self.manager = manager
         self.hidDevice = hidDevice
@@ -119,6 +126,15 @@ public final class HIDTransport: DeviceTransport {
         }
 
         let messageID = data.count > 3 ? data[3] : 0
+        if expectResponse {
+            pendingResponseMessageIDs.insert(messageID)
+        }
+        defer {
+            if expectResponse {
+                pendingResponseMessageIDs.remove(messageID)
+            }
+        }
+
         let chunks = chunk(data: data, size: maxOutputReportSize)
 
         for chunk in chunks {
@@ -177,12 +193,30 @@ public final class HIDTransport: DeviceTransport {
                 guard let context, reportLength > 0 else { return }
                 let transport = Unmanaged<HIDTransport>.fromOpaque(context).takeUnretainedValue()
                 let data = Data(bytes: report, count: reportLength)
-                transport.responseLock.lock()
-                transport.responseQueue.append(data)
-                transport.responseLock.unlock()
+                transport.routeInput(data)
             },
             context
         )
+    }
+
+    private func routeInput(_ data: Data) {
+        let packet = TransportPacket.normalize(data)
+        if packet.count >= 5, packet[4] == RobobloqAction.statusNotification.rawValue {
+            unsolicitedInputHandler?(data)
+            return
+        }
+
+        let messageID = TransportPacket.messageID(in: data)
+        responseLock.lock()
+        let isPendingResponse = messageID.map { pendingResponseMessageIDs.contains($0) } ?? false
+        if isPendingResponse {
+            responseQueue.append(data)
+            responseLock.unlock()
+            return
+        }
+        responseLock.unlock()
+
+        unsolicitedInputHandler?(data)
     }
 
     private func chunk(data: Data, size: Int) -> [Data] {
@@ -198,60 +232,10 @@ public final class HIDTransport: DeviceTransport {
     }
 
     static func normalizedPacket(_ data: Data) -> Data {
-        var bytes = [UInt8](data)
-        if bytes.first == 0x00 {
-            bytes.removeFirst()
-        }
-        return Data(bytes)
+        TransportPacket.normalize(data)
     }
 
     static func messageID(in data: Data) -> UInt8? {
-        let packet = normalizedPacket(data)
-        guard packet.count > 3 else { return nil }
-        return packet[3]
-    }
-}
-
-private final class HIDRunLoopThread {
-    private let queue = DispatchQueue(label: "com.dxlight.hid.runloop")
-    private var runLoopStorage: CFRunLoop?
-    private let started = DispatchSemaphore(value: 0)
-
-    var runLoop: CFRunLoop {
-        guard let runLoopStorage else {
-            fatalError("HID run loop not ready")
-        }
-        return runLoopStorage
-    }
-
-    init() {
-        queue.async {
-            self.runLoopStorage = CFRunLoopGetCurrent()
-            self.started.signal()
-            CFRunLoopRun()
-        }
-        started.wait()
-    }
-
-    func perform<T>(_ work: @escaping () throws -> T) throws -> T {
-        var output: Result<T, Error>?
-        let finished = DispatchSemaphore(value: 0)
-
-        queue.async {
-            output = Result { try work() }
-            finished.signal()
-        }
-
-        finished.wait()
-        return try output!.get()
-    }
-
-    func performIfRunning(_ work: @escaping () -> Void) {
-        let finished = DispatchSemaphore(value: 0)
-        queue.async {
-            work()
-            finished.signal()
-        }
-        finished.wait()
+        TransportPacket.messageID(in: data)
     }
 }

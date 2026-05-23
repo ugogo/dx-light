@@ -45,7 +45,7 @@ public enum DeviceTransportError: LocalizedError {
     public var errorDescription: String? {
         switch self {
         case .deviceNotFound:
-            return "DX Light strip not found. Quit the official DX Light app and check the USB connection."
+            return "DX Light strip not found. Check the USB connection and close any other DX Light app."
         case .openFailed(let detail):
             return "Failed to open device: \(detail)"
         case .writeFailed(let detail):
@@ -53,15 +53,16 @@ public enum DeviceTransportError: LocalizedError {
         case .readTimeout:
             return "Timed out waiting for a device response."
         case .deviceBusy:
-            return "Device is busy. Quit the official DX Light app and try again."
+            return "Device is busy. Close any other app using the strip and try again."
         case .invalidResponse:
             return "Received an invalid response from the device."
         }
     }
 }
 
-public protocol DeviceTransport {
+public protocol DeviceTransport: AnyObject {
     var device: DiscoveredDevice { get }
+    var unsolicitedInputHandler: ((Data) -> Void)? { get set }
     func open() throws
     func close()
     func write(_ data: Data, expectResponse: Bool) throws -> Data

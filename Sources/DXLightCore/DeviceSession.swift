@@ -23,8 +23,24 @@ public enum RobobloqDeviceSession {
     }
 
     public static func readDeviceInfo(using transport: any DeviceTransport) -> DeviceInfo {
-        _ = transport
+        if let response = try? transport.write(RobobloqProtocol.readDeviceInfo(), expectResponse: true),
+           let info = RobobloqProtocol.parseDeviceInfo(from: response) {
+            return info
+        }
         return defaultDeviceInfo()
+    }
+
+    public static func queryDeviceState(using transport: any DeviceTransport) -> Data? {
+        guard let response = try? transport.write(RobobloqProtocol.readDeviceInfo(), expectResponse: true) else {
+            return nil
+        }
+        let packet = TransportPacket.normalize(response)
+        guard packet.count >= 6,
+              packet[0] == 0x52,
+              packet[1] == 0x42 else {
+            return nil
+        }
+        return packet
     }
 
     public static func turnOff(using transport: any DeviceTransport, lampsAmount: Int) throws {

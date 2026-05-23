@@ -29,6 +29,16 @@ struct DXLightCLI {
                 try runBrightness(value)
             case "test":
                 try runTest()
+            case "sniff":
+                try runSniff()
+            case "probe":
+                try runProbe()
+            case "state":
+                try runState()
+            case "debug-button":
+                let logPath = arguments.dropFirst().first
+                    ?? "/tmp/dx-light-button-debug.log"
+                try ButtonDebug.run(logPath: logPath)
             default:
                 printUsage()
                 exit(1)
@@ -115,6 +125,78 @@ struct DXLightCLI {
         print("Test complete.")
     }
 
+    private static func runState() throws {
+        try RobobloqDeviceSession.withTransport { transport, _ in
+            guard let packet = RobobloqDeviceSession.queryDeviceState(using: transport) else {
+                print("No state response.")
+                return
+            }
+            let hex = [UInt8](packet).map { String(format: "%02x", $0) }.joined(separator: " ")
+            print(hex)
+            if let power = RobobloqProtocol.parsePowerState(from: packet) {
+                print("power: \(power ? "on" : "off")")
+            } else {
+                print("power: unknown")
+            }
+        }
+    }
+
+    private static func runProbe() throws {
+        try RobobloqDeviceSession.withTransport { transport, _ in
+            var baseline: [UInt8]?
+            print("Polling readDeviceInfo every 500ms. Toggle the physical button. Ctrl+C to stop.")
+            while true {
+                guard let packet = RobobloqDeviceSession.queryDeviceState(using: transport) else {
+                    print("read timeout")
+                    Thread.sleep(forTimeInterval: 0.5)
+                    continue
+                }
+                let bytes = [UInt8](packet)
+                let hex = bytes.map { String(format: "%02x", $0) }.joined(separator: " ")
+                if let baseline {
+                    var diffs: [String] = []
+                    for index in 0..<max(baseline.count, bytes.count) {
+                        let old = index < baseline.count ? baseline[index] : 0
+                        let new = index < bytes.count ? bytes[index] : 0
+                        if old != new {
+                            diffs.append("[\(index)] \(old)->\(new)")
+                        }
+                    }
+                    if !diffs.isEmpty {
+                        print("changed \(diffs.joined(separator: ", ")) | \(hex)")
+                    }
+                } else {
+                    print("baseline: \(hex)")
+                    baseline = bytes
+                }
+                Thread.sleep(forTimeInterval: 0.5)
+            }
+        }
+    }
+
+    private static func runSniff() throws {
+        guard let device = DeviceDiscovery.discoverPreferred() else {
+            throw DeviceTransportError.deviceNotFound
+        }
+
+        print("Listening for device reports on \(device.kind.rawValue). Press the strip button. Ctrl+C to stop.")
+        let transport = DeviceDiscovery.makeTransport(for: device)
+        transport.unsolicitedInputHandler = { data in
+            let hex = [UInt8](data).map { String(format: "%02x", $0) }.joined(separator: " ")
+            if let event = RobobloqProtocol.parseDeviceEvent(from: data) {
+                print("report: \(hex) -> \(event)")
+            } else {
+                print("report: \(hex)")
+            }
+        }
+        try transport.open()
+        defer { transport.close() }
+
+        while true {
+            Thread.sleep(forTimeInterval: 1)
+        }
+    }
+
     private static func printUsage() {
         print("""
         dx-light-cli commands:
@@ -124,6 +206,10 @@ struct DXLightCLI {
           off
           brightness <0-1.0>
           test
+          sniff
+          probe
+          state
+          debug-button [log-path]
         """)
     }
 }

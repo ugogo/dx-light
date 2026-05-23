@@ -121,7 +121,7 @@ struct MenuPopoverView: View {
             }
 
             if case .error = controller.status {
-                Text("Quit the official DX Light app and restart this app if control fails.")
+                Text("Close any other DX Light app, check USB, then click Refresh.")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }

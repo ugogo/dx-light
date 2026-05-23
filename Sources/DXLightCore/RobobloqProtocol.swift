@@ -12,6 +12,7 @@ public enum RobobloqAction: UInt8 {
     case setDynamicSpeed = 138
     case setSoundSensitivity = 139
     case turnOffLight = 151
+    case statusNotification = 241
 }
 
 public enum RobobloqConstants {
@@ -98,6 +99,27 @@ final class MessageIDGeneratorState {
     }
 }
 
+public enum RobobloqDeviceEvent: Equatable, Sendable {
+    case powerOn
+    case powerOff
+}
+
+public enum TransportPacket {
+    public static func normalize(_ data: Data) -> Data {
+        var bytes = [UInt8](data)
+        if bytes.first == 0x00 {
+            bytes.removeFirst()
+        }
+        return Data(bytes)
+    }
+
+    public static func messageID(in data: Data) -> UInt8? {
+        let packet = normalize(data)
+        guard packet.count > 3 else { return nil }
+        return packet[3]
+    }
+}
+
 public enum RobobloqProtocol {
     public static func checksum(_ bytes: [UInt8]) -> UInt8 {
         UInt8(bytes.reduce(0) { ($0 + Int($1)) % 256 })
@@ -142,7 +164,7 @@ public enum RobobloqProtocol {
     }
 
     public static func parseDeviceInfo(from response: Data) -> DeviceInfo? {
-        let packet = HIDTransport.normalizedPacket(response)
+        let packet = TransportPacket.normalize(response)
         guard packet.count >= 24 else { return nil }
         let bytes = [UInt8](packet)
         guard bytes[0] == 0x52, bytes[1] == 0x42 else { return nil }
@@ -160,6 +182,51 @@ public enum RobobloqProtocol {
             lampsAmount: lampsAmount,
             displaySize: displaySize
         )
+    }
+
+    public static func parsePowerState(from response: Data) -> Bool? {
+        let packet = TransportPacket.normalize(response)
+        guard packet.count >= 12 else { return nil }
+        let bytes = [UInt8](packet)
+        guard bytes[0] == 0x52, bytes[1] == 0x42 else { return nil }
+
+        switch bytes[9] {
+        case 0:
+            return false
+        case 1:
+            return true
+        default:
+            break
+        }
+
+        if bytes[10] <= RobobloqConstants.minimumBrightness {
+            return false
+        }
+        if bytes[10] >= RobobloqConstants.minimumBrightness {
+            return true
+        }
+
+        return nil
+    }
+
+    public static func parseDeviceEvent(from data: Data) -> RobobloqDeviceEvent? {
+        let packet = TransportPacket.normalize(data)
+        guard packet.count > 8 else { return nil }
+        let bytes = [UInt8](packet)
+        guard bytes[0] == 0x52,
+              bytes[1] == 0x42,
+              bytes[4] == RobobloqAction.statusNotification.rawValue else {
+            return nil
+        }
+
+        switch bytes[8] {
+        case 0:
+            return .powerOff
+        case 1:
+            return .powerOn
+        default:
+            return nil
+        }
     }
 
     private static func buildPacket(action: RobobloqAction, payload: [UInt8]) -> Data {

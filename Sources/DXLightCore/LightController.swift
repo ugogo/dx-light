@@ -126,7 +126,7 @@ public final class LightController: ObservableObject {
     private func pollLoop() async {
         while !Task.isCancelled {
             await refreshDevicePresence(force: false)
-            try? await Task.sleep(nanoseconds: 2_000_000_000)
+            try? await Task.sleep(nanoseconds: 1_000_000_000)
         }
     }
 
@@ -138,22 +138,22 @@ public final class LightController: ObservableObject {
             wasConnected = false
         }
 
-        if !force,
-           connectedDevice != nil,
-           case .connected = status,
-           DeviceDiscovery.discoverPreferred() != nil {
-            return
-        }
-
-        if connectedDevice == nil || force {
-            status = .searching
-        }
-
         guard let discovered = DeviceDiscovery.discoverPreferred() else {
             connectedDevice = nil
             deviceInfo = nil
             status = .error(DeviceTransportError.deviceNotFound.localizedDescription)
             return
+        }
+
+        if !force,
+           connectedDevice == discovered,
+           case .connected = status {
+            status = .connected(discovered)
+            return
+        }
+
+        if connectedDevice == nil || connectedDevice != discovered || force {
+            status = .searching
         }
 
         connectedDevice = discovered

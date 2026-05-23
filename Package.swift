@@ -25,5 +25,9 @@ let package = Package(
             name: "DXLightApp",
             dependencies: ["DXLightCore"]
         ),
+        .testTarget(
+            name: "DXLightCoreTests",
+            dependencies: ["DXLightCore"]
+        ),
     ]
 )
