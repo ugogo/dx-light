@@ -1,0 +1,15 @@
+{
+  "name": "homebridge-dx-light",
+  "version": "0.1.0",
+  "description": "Homebridge accessory plugin for Robobloq DX Light controlled by dx-light-cli.",
+  "main": "index.js",
+  "keywords": [
+    "homebridge-plugin"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "peerDependencies": {
+    "homebridge": ">=1.8.0"
+  }
+}
