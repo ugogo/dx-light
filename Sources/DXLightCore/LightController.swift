@@ -131,6 +131,13 @@ public final class LightController: ObservableObject {
     }
 
     private func refreshDevicePresence(force: Bool) async {
+        let wasConnected: Bool
+        if case .connected = status {
+            wasConnected = true
+        } else {
+            wasConnected = false
+        }
+
         if !force,
            connectedDevice != nil,
            case .connected = status,
@@ -152,6 +159,10 @@ public final class LightController: ObservableObject {
         connectedDevice = discovered
         deviceInfo = RobobloqDeviceSession.defaultDeviceInfo()
         status = .connected(discovered)
+
+        if !wasConnected && isOn {
+            await applyPowerState()
+        }
     }
 
     private func applyPowerState() async {
