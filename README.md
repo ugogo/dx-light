@@ -11,7 +11,6 @@ A lightweight native macOS menu bar app that controls a Robobloq DX Light monito
 ## Build
 
 ```bash
-cd /Users/ugogo/dev/dx-light
 npm run build
 ```
 
