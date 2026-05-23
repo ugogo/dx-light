@@ -1,0 +1,10 @@
+{
+  "name": "dx-light",
+  "private": true,
+  "scripts": {
+    "build": "bash scripts/build-app.sh",
+    "start": "bash scripts/start.sh",
+    "stop": "bash scripts/stop.sh",
+    "restart": "bash scripts/restart.sh"
+  }
+}
