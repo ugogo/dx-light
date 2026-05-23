@@ -5,6 +5,8 @@
     "build": "bash scripts/build-app.sh",
     "start": "bash scripts/start.sh",
     "stop": "bash scripts/stop.sh",
-    "restart": "bash scripts/restart.sh"
+    "restart": "bash scripts/restart.sh",
+    "smoke": "bash scripts/smoke.sh",
+    "test": "swift test"
   }
 }

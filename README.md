@@ -12,8 +12,7 @@ A lightweight native macOS menu bar app that controls a Robobloq DX Light monito
 
 ```bash
 cd /Users/ugogo/dev/dx-light
-swift build -c release --product dx-light-cli
-./scripts/build-app.sh
+npm run build
 ```
 
 Outputs:
@@ -24,22 +23,22 @@ Outputs:
 ## CLI usage
 
 ```bash
-.build/release/dx-light-cli list
-.build/release/dx-light-cli info
-.build/release/dx-light-cli off
-.build/release/dx-light-cli on 0.5
-.build/release/dx-light-cli brightness 0.75
-.build/release/dx-light-cli test
+swift run dx-light-cli list
+swift run dx-light-cli info
+swift run dx-light-cli off
+swift run dx-light-cli on 0.5
+swift run dx-light-cli brightness 0.75
+swift run dx-light-cli test
 ```
 
 ## Menu bar app
 
-1. Open `dist/DX Light.app`
+1. Run `npm run restart` to rebuild and launch the current app bundle
 2. Click the light bulb icon in the menu bar
 3. Toggle power or adjust brightness
 4. Option+click the icon to toggle power without opening the popover
 
-The app polls for the strip every 2 seconds and reconnects automatically after sleep or USB replug.
+The app polls for the strip every second and reconnects automatically after sleep or USB replug. `npm run start` and `npm run restart` rebuild the app bundle before launching, so local testing uses the current source instead of a stale `dist/DX Light.app`.
 
 ## Troubleshooting
 
@@ -56,6 +55,37 @@ Expected USB identifiers:
 - Serial CDC fallback: vendor `0x1A86`, product `0xFE0C`
 
 If control fails with a busy-device error, close any other app that may hold the USB interface, including the official DX Light app.
+
+## Hardware smoke test
+
+Run this after transport changes, before a release, or when something feels off with a connected bar:
+
+```bash
+npm run smoke
+```
+
+The script builds the CLI, lists the connected strip, then walks through on, brightness, and off checks.
+
+For manual app validation:
+
+1. Quit the official DX Light app and this app.
+2. Run `npm run restart`.
+3. Confirm the menu shows connected.
+4. Toggle power from the app.
+5. Change brightness and color from the app.
+6. Unplug and replug USB, then confirm the menu reconnects within a few seconds.
+
+If the CLI smoke test works but the app does not, first suspect a stale/running app bundle or USB ownership. If both CLI and app fail, check device discovery and whether another process has the HID interface open.
+
+## Physical button investigation
+
+The main bar button is not synced into app state yet. Keep physical-button experiments in debug tooling until the exact device report is confirmed:
+
+```bash
+swift run dx-light-cli debug-button /tmp/dx-light-button-debug.log
+```
+
+Close the menu app before running debug captures. The app should not hold a persistent listener while also sending control commands; that architecture can make the HID device busy and break normal on/off/color control.
 
 ## Distribution / notarization
 
@@ -82,4 +112,5 @@ For wider distribution:
 
 - Screen ambilight / audio sync
 - BLE / wireless dongle support
-- LED effects and color picker
+- LED effects
+- Physical button state sync
