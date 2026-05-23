@@ -17,6 +17,7 @@ struct DXLightApp: App {
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private let controller = LightController()
+    private let loginItemController = LoginItemController()
     private var statusItem: NSStatusItem?
     private var popover: NSPopover?
     private var cancellables = Set<AnyCancellable>()
@@ -72,9 +73,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
 
     private func showPopover(relativeTo button: NSStatusBarButton) {
         guard let popover else { return }
+        loginItemController.refreshStatus()
 
         popover.contentViewController = NSHostingController(
-            rootView: MenuPopoverView(controller: controller)
+            rootView: MenuPopoverView(
+                controller: controller,
+                loginItemController: loginItemController
+            )
         )
 
         NSApp.setActivationPolicy(.regular)

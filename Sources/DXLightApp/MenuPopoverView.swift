@@ -3,11 +3,13 @@ import SwiftUI
 
 struct MenuPopoverView: View {
     @ObservedObject var controller: LightController
+    @ObservedObject var loginItemController: LoginItemController
     @State private var sliderValue: Double
     @State private var pickerColor: Color
 
-    init(controller: LightController) {
+    init(controller: LightController, loginItemController: LoginItemController) {
         self.controller = controller
+        self.loginItemController = loginItemController
         _sliderValue = State(initialValue: controller.brightness)
         _pickerColor = State(initialValue: controller.color.swiftUIColor)
     }
@@ -128,6 +130,19 @@ struct MenuPopoverView: View {
 
             Divider()
 
+            Toggle(isOn: launchAtLoginBinding) {
+                Text("Open at login")
+            }
+            .toggleStyle(.switch)
+
+            if let detail = loginItemController.detail {
+                Text(detail)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+
+            Divider()
+
             HStack {
                 Button("Refresh") {
                     Task { await controller.refreshConnection() }
@@ -150,6 +165,13 @@ struct MenuPopoverView: View {
         Binding(
             get: { controller.isOn },
             set: { controller.requestSetPower($0) }
+        )
+    }
+
+    private var launchAtLoginBinding: Binding<Bool> {
+        Binding(
+            get: { loginItemController.isEnabled },
+            set: { loginItemController.setEnabled($0) }
         )
     }
 
