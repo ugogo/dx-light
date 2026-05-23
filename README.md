@@ -37,11 +37,14 @@ swift run dx-light-cli test
 2. Click the light bulb icon in the menu bar
 3. Toggle power or adjust brightness
 4. Enable `Open at login` if you want DX Light to launch automatically
-5. Option+click the icon to toggle power without opening the popover
+5. Enable `Smooth transitions` if you want short fades for power, brightness, and color changes
+6. Option+click the icon to toggle power without opening the popover
 
 The app polls for the strip every second and reconnects automatically after sleep or USB replug. `npm run start` and `npm run restart` rebuild the app bundle before launching, so local testing uses the current source instead of a stale `dist/DX Light.app`.
 
 `Open at login` uses macOS Login Items. If macOS asks for approval, enable DX Light in System Settings → General → Login Items.
+
+`Smooth transitions` keeps fades short and uses a small number of device writes so the USB connection stays responsive.
 
 ## Troubleshooting
 

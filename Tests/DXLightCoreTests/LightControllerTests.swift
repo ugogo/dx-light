@@ -8,12 +8,26 @@ final class LightControllerTests: XCTestCase {
         defaults.set(true, forKey: "dxlight.isOn")
         defaults.set(0.42, forKey: "dxlight.brightness")
         defaults.set(try JSONEncoder().encode(RGBColor.lightBlue), forKey: "dxlight.color")
+        defaults.set(false, forKey: "dxlight.smoothTransitions")
 
         let controller = LightController(defaults: defaults)
 
         XCTAssertTrue(controller.isOn)
         XCTAssertEqual(controller.brightness, 0.42)
         XCTAssertEqual(controller.color, .lightBlue)
+        XCTAssertFalse(controller.smoothTransitions)
+    }
+
+    func testSmoothTransitionsDefaultOnAndPersistChanges() throws {
+        let defaults = try makeDefaults()
+        let controller = LightController(defaults: defaults)
+
+        XCTAssertTrue(controller.smoothTransitions)
+
+        controller.setSmoothTransitions(false)
+
+        XCTAssertFalse(controller.smoothTransitions)
+        XCTAssertFalse(defaults.bool(forKey: "dxlight.smoothTransitions"))
     }
 
     func testBrightnessIsClampedAndPersistedWhileOff() throws {

@@ -135,6 +135,11 @@ struct MenuPopoverView: View {
             }
             .toggleStyle(.switch)
 
+            Toggle(isOn: smoothTransitionsBinding) {
+                Text("Smooth transitions")
+            }
+            .toggleStyle(.switch)
+
             if let detail = loginItemController.detail {
                 Text(detail)
                     .font(.caption2)
@@ -172,6 +177,13 @@ struct MenuPopoverView: View {
         Binding(
             get: { loginItemController.isEnabled },
             set: { loginItemController.setEnabled($0) }
+        )
+    }
+
+    private var smoothTransitionsBinding: Binding<Bool> {
+        Binding(
+            get: { controller.smoothTransitions },
+            set: { controller.setSmoothTransitions($0) }
         )
     }
 
