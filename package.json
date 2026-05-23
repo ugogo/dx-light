@@ -7,6 +7,9 @@
     "stop": "bash scripts/stop.sh",
     "restart": "bash scripts/restart.sh",
     "smoke": "bash scripts/smoke.sh",
-    "test": "swift test"
+    "test": "swift test",
+    "windows:build": "dotnet build Windows/DXLight.Windows.sln",
+    "windows:test": "dotnet test Windows/DXLight.Windows.sln",
+    "windows:list": "dotnet run --project Windows/DXLight.Cli -- list"
   }
 }

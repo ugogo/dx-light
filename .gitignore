@@ -3,3 +3,6 @@ dist/
 .swiftpm/
 .DS_Store
 *.xcuserstate
+*.csproj.user
+bin/
+obj/

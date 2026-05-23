@@ -1,14 +1,15 @@
 # DX Light
 
-A lightweight native macOS menu bar app that controls a Robobloq DX Light monitor LED strip over USB. It replaces the official Electron app for reliable on/off and brightness control.
+A lightweight native app that controls a Robobloq DX Light monitor LED strip over USB. It replaces the official Electron app for reliable on/off, brightness, and color control.
 
 ## Requirements
 
-- macOS 13 or later
+- macOS 13 or later for the Swift menu bar app
+- Windows 10/11 with .NET 8 Desktop Runtime for the Windows tray app
 - Robobloq DX Light strip connected over USB
 - Only one process can control the strip at a time; quit the official DX Light app first
 
-## Build
+## macOS build
 
 ```bash
 npm run build
@@ -19,7 +20,7 @@ Outputs:
 - Menu bar app: `dist/DX Light.app`
 - CLI: `.build/release/dx-light-cli`
 
-## CLI usage
+## macOS CLI usage
 
 ```bash
 swift run dx-light-cli list
@@ -29,6 +30,32 @@ swift run dx-light-cli on 0.5
 swift run dx-light-cli brightness 0.75
 swift run dx-light-cli test
 ```
+
+## Windows build
+
+```powershell
+npm run windows:build
+npm run windows:test
+```
+
+Outputs:
+
+- Tray app: `Windows\DXLight.Tray\bin\Debug\net8.0-windows\DXLight.Tray.exe`
+- CLI: `Windows\DXLight.Cli\bin\Debug\net8.0\DXLight.Cli.exe`
+
+## Windows CLI usage
+
+```powershell
+dotnet run --project Windows\DXLight.Cli -- list
+dotnet run --project Windows\DXLight.Cli -- info
+dotnet run --project Windows\DXLight.Cli -- off
+dotnet run --project Windows\DXLight.Cli -- on 0.5
+dotnet run --project Windows\DXLight.Cli -- brightness 0.75
+dotnet run --project Windows\DXLight.Cli -- state
+dotnet run --project Windows\DXLight.Cli -- test
+```
+
+The Windows app stores preferences in `%APPDATA%\DXLight\settings.json`. `Open at login` uses the current user's `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` key and does not require administrator access.
 
 ## Menu bar app
 
@@ -86,6 +113,16 @@ For manual app validation:
 
 If the CLI smoke test works but the app does not, first suspect a stale/running app bundle or USB ownership. If both CLI and app fail, check device discovery and whether another process has the HID interface open.
 
+## Windows tray app
+
+1. Run `npm run windows:build`
+2. Launch `Windows\DXLight.Tray\bin\Debug\net8.0-windows\DXLight.Tray.exe`
+3. Left-click the tray icon to open controls
+4. Double-click the tray icon or use the context menu to toggle power
+5. Use the same power, brightness, color, saved preset, smooth transition, open-at-login, and USB reconnect options as the macOS app
+
+For KVM setups, keep `Turn on when USB connects` enabled. When the strip disappears from Windows and later reconnects, DX Light marks the app state as on and sends the on command automatically.
+
 ## Physical button investigation
 
 The main bar button is not synced into app state yet. Keep physical-button experiments in debug tooling until the exact device report is confirmed:
@@ -116,6 +153,12 @@ For wider distribution:
 - [`Sources/DXLightCore/HIDTransport.swift`](Sources/DXLightCore/HIDTransport.swift) — IOHIDManager output reports
 - [`Sources/DXLightCore/SerialTransport.swift`](Sources/DXLightCore/SerialTransport.swift) — 115200 baud CDC fallback
 - [`Sources/DXLightCore/LightController.swift`](Sources/DXLightCore/LightController.swift) — connection polling and state
+
+Windows-specific code lives in:
+
+- `Windows/DXLight.Core` - Windows protocol, HID transport, settings, and controller
+- `Windows/DXLight.Cli` - Windows command-line diagnostics and smoke commands
+- `Windows/DXLight.Tray` - Windows notification-area app
 
 ## Out of scope (v1)
 
