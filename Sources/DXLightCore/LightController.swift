@@ -13,6 +13,7 @@ public final class LightController: ObservableObject {
     @Published public var isOn: Bool
     @Published public var brightness: Double
     @Published public var color: RGBColor
+    @Published public private(set) var savedPreset: ColorPreset?
 
     private let defaults: UserDefaults
     private var deviceInfo: DeviceInfo?
@@ -21,6 +22,7 @@ public final class LightController: ObservableObject {
     private var brightnessDebounceTask: Task<Void, Never>?
     private var brightnessApplyTask: Task<Void, Never>?
     private var scheduledBrightness: Double?
+    private var colorDebounceTask: Task<Void, Never>?
 
     public init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
@@ -32,6 +34,26 @@ public final class LightController: ObservableObject {
         } else {
             self.color = .warmWhite
         }
+        if let data = defaults.data(forKey: Keys.savedPreset),
+           let saved = try? JSONDecoder().decode(ColorPreset.self, from: data) {
+            self.savedPreset = saved
+        } else {
+            self.savedPreset = nil
+        }
+    }
+
+    public var colorPresets: [ColorPreset] {
+        var presets = RGBColor.presets
+        if let savedPreset {
+            presets.append(savedPreset)
+        }
+        return presets
+    }
+
+    public func saveColorAsPreset(_ colorToSave: RGBColor? = nil) {
+        let preset = ColorPreset(name: ColorPreset.savedName, color: colorToSave ?? color)
+        savedPreset = preset
+        persistState()
     }
 
     public func start() {
@@ -47,6 +69,7 @@ public final class LightController: ObservableObject {
         brightnessDebounceTask?.cancel()
         brightnessApplyTask?.cancel()
         scheduledBrightness = nil
+        colorDebounceTask?.cancel()
     }
 
     public func setPower(_ enabled: Bool) async {
@@ -65,6 +88,20 @@ public final class LightController: ObservableObject {
 
     public func togglePower() async {
         await setPower(!isOn)
+    }
+
+    public func setColor(_ newColor: RGBColor) {
+        guard color != newColor else { return }
+        color = newColor
+        persistState()
+        guard isOn else { return }
+
+        colorDebounceTask?.cancel()
+        colorDebounceTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 80_000_000)
+            guard !Task.isCancelled else { return }
+            await self?.sendColor()
+        }
     }
 
     public func setBrightness(_ value: Double) {
@@ -178,6 +215,30 @@ public final class LightController: ObservableObject {
         }
     }
 
+    private func sendColor() async {
+        let device = connectedDevice
+        let currentColor = color
+        let brightness = brightness
+        let lampsAmount = deviceInfo?.lampsAmount ?? RobobloqDeviceSession.defaultLampsAmount
+
+        isBusy = true
+        defer { isBusy = false }
+
+        do {
+            try await DeviceCommandRunner.withTransport(device: device, settleDelay: 0.05) { transport, _ in
+                try RobobloqDeviceSession.applyBrightness(
+                    brightness,
+                    color: currentColor,
+                    lampsAmount: lampsAmount,
+                    using: transport
+                )
+            }
+        } catch {
+            status = .error(error.localizedDescription)
+            connectedDevice = nil
+        }
+    }
+
     private func sendBrightness(to value: Double) async {
         let device = connectedDevice
         let color = color
@@ -226,11 +287,17 @@ public final class LightController: ObservableObject {
         if let data = try? JSONEncoder().encode(color) {
             defaults.set(data, forKey: Keys.color)
         }
+        if let savedPreset, let data = try? JSONEncoder().encode(savedPreset) {
+            defaults.set(data, forKey: Keys.savedPreset)
+        } else {
+            defaults.removeObject(forKey: Keys.savedPreset)
+        }
     }
 
     private enum Keys {
         static let isOn = "dxlight.isOn"
         static let brightness = "dxlight.brightness"
         static let color = "dxlight.color"
+        static let savedPreset = "dxlight.savedPreset"
     }
 }

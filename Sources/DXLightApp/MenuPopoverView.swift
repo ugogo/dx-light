@@ -4,10 +4,12 @@ import SwiftUI
 struct MenuPopoverView: View {
     @ObservedObject var controller: LightController
     @State private var sliderValue: Double
+    @State private var pickerColor: Color
 
     init(controller: LightController) {
         self.controller = controller
         _sliderValue = State(initialValue: controller.brightness)
+        _pickerColor = State(initialValue: controller.color.swiftUIColor)
     }
 
     var body: some View {
@@ -56,6 +58,66 @@ struct MenuPopoverView: View {
                 if abs(sliderValue - newValue) > 0.001 {
                     sliderValue = newValue
                 }
+            }
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Color")
+                    .font(.subheadline)
+
+                HStack(spacing: 10) {
+                    ForEach(controller.colorPresets, id: \.name) { preset in
+                        Button {
+                            controller.setColor(preset.color)
+                            pickerColor = preset.color.swiftUIColor
+                        } label: {
+                            Circle()
+                                .fill(preset.color.swiftUIColor)
+                                .frame(width: 28, height: 28)
+                                .overlay {
+                                    if controller.color == preset.color {
+                                        Circle()
+                                            .strokeBorder(.primary, lineWidth: 2)
+                                    }
+                                }
+                                .overlay {
+                                    if preset.name == ColorPreset.savedName {
+                                        Image(systemName: "bookmark.fill")
+                                            .font(.system(size: 10))
+                                            .foregroundStyle(.white.opacity(0.9))
+                                            .shadow(radius: 1)
+                                    }
+                                }
+                        }
+                        .buttonStyle(.plain)
+                        .help(preset.name)
+                    }
+
+                    Spacer()
+
+                    Button {
+                        if let rgb = pickerColor.rgbColor() {
+                            controller.saveColorAsPreset(rgb)
+                        }
+                    } label: {
+                        Image(systemName: "bookmark")
+                    }
+                    .buttonStyle(.borderless)
+                    .help("Save current color as preset")
+
+                    ColorPicker("", selection: $pickerColor, supportsOpacity: false)
+                        .labelsHidden()
+                }
+            }
+            .disabled(!isConnected || !controller.isOn)
+            .onChange(of: controller.color) { newValue in
+                let updated = newValue.swiftUIColor
+                if pickerColor.rgbColor() != newValue {
+                    pickerColor = updated
+                }
+            }
+            .onChange(of: pickerColor) { newValue in
+                guard let rgb = newValue.rgbColor(), rgb != controller.color else { return }
+                controller.setColor(rgb)
             }
 
             if case .error = controller.status {

@@ -36,6 +36,30 @@ public struct RGBColor: Codable, Equatable, Sendable {
 
     public static let warmWhite = RGBColor(red: 255, green: 200, blue: 150)
     public static let off = RGBColor(red: 0, green: 0, blue: 0)
+
+    public static let warmOrange = RGBColor(red: 255, green: 150, blue: 60)
+    public static let lightBlue = RGBColor(red: 140, green: 200, blue: 255)
+    public static let softPurple = RGBColor(red: 190, green: 140, blue: 255)
+}
+
+public struct ColorPreset: Equatable, Sendable, Codable {
+    public let name: String
+    public let color: RGBColor
+
+    public init(name: String, color: RGBColor) {
+        self.name = name
+        self.color = color
+    }
+
+    public static let savedName = "Saved"
+}
+
+extension RGBColor {
+    public static let presets: [ColorPreset] = [
+        ColorPreset(name: "Warm Orange", color: .warmOrange),
+        ColorPreset(name: "Light Blue", color: .lightBlue),
+        ColorPreset(name: "Soft Purple", color: .softPurple),
+    ]
 }
 
 public struct DeviceInfo: Equatable, Sendable {
