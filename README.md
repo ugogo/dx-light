@@ -37,10 +37,11 @@ Click the light bulb in the menu bar. Option-click toggles power without opening
 
 ```powershell
 npm run windows:build
-.\Windows\DXLight.Tray\bin\Debug\net8.0-windows\DXLight.Tray.exe
+npm run windows:start          # launch tray app (no bash)
+npm run windows:shortcut       # Desktop shortcut → DX Light.lnk
 ```
 
-Left-click the tray icon for controls. Double-click or use the context menu to toggle power.
+Or double-click **DX Light** on your Desktop after running `windows:shortcut`. Left-click the tray icon for controls. Double-click or use the context menu to toggle power.
 
 ## npm scripts
 
@@ -53,6 +54,8 @@ Left-click the tray icon for controls. Double-click or use the context menu to t
 | `npm run smoke` | Interactive CLI hardware check (macOS, device required) |
 | `npm run test` | `swift test` (macOS) |
 | `npm run windows:build` | `dotnet build` the Windows solution |
+| `npm run windows:start` | Launch the tray app (PowerShell; builds Release if missing) |
+| `npm run windows:shortcut` | Create **DX Light.lnk** on the Desktop |
 | `npm run windows:test` | `dotnet test` the Windows solution |
 | `npm run windows:list` | List connected devices via Windows CLI |
 

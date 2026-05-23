@@ -9,6 +9,8 @@
     "smoke": "bash scripts/smoke.sh",
     "test": "swift test",
     "windows:build": "dotnet build Windows/DXLight.Windows.sln",
+    "windows:start": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/windows-start.ps1",
+    "windows:shortcut": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/create-shortcut.ps1 -BuildIfMissing",
     "windows:test": "dotnet test Windows/DXLight.Windows.sln",
     "windows:list": "dotnet run --project Windows/DXLight.Cli -- list"
   }
