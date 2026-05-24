@@ -77,6 +77,63 @@ Both apps expose the same controls:
 
 **Windows-only:** Preferences are stored in `%APPDATA%\DXLight\settings.json`. macOS uses standard app `UserDefaults`.
 
+## iPhone / Home app control
+
+DX Light can be exposed to Apple Home through the local Homebridge plugin in
+[`Homebridge/homebridge-dx-light`](Homebridge/homebridge-dx-light). The first
+version supports power and brightness on macOS and Windows.
+
+Build the CLI, link the plugin, then run Homebridge.
+
+macOS:
+
+```bash
+npm run build
+npm install -g homebridge
+cd Homebridge/homebridge-dx-light
+npm link
+homebridge -D
+```
+
+Windows:
+
+```powershell
+npm run windows:build
+npm install -g homebridge
+cd Homebridge\homebridge-dx-light
+npm link
+homebridge -D
+```
+
+Add this accessory entry to your Homebridge config.
+
+macOS:
+
+```json
+{
+  "accessory": "DXLight",
+  "name": "DX Light",
+  "cliPath": "/Users/ugogo/dev/dx-light/.build/release/dx-light-cli",
+  "defaultBrightness": 50
+}
+```
+
+Windows:
+
+```json
+{
+  "accessory": "DXLight",
+  "name": "DX Light",
+  "cliPath": "C:\\path\\to\\dx-light\\Windows\\DXLight.Cli\\bin\\Release\\net8.0\\DXLight.Cli.exe",
+  "defaultBrightness": 50
+}
+```
+
+Pair Homebridge from the Home app using the setup code printed by Homebridge.
+Keep the official Robobloq app closed; Homebridge calls the same CLI that the
+hardware smoke test uses. On Windows, do not run the tray app and Homebridge
+control at the same time because both can compete for the HID device.
+
 ## CLI reference
 
 Core commands work on both platforms:
