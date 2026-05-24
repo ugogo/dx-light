@@ -3,6 +3,17 @@ using System.Runtime.CompilerServices;
 
 namespace DXLight.Core;
 
+internal sealed record PowerCommandRequest(
+    DiscoveredDevice? Device,
+    bool TargetOn,
+    double Brightness,
+    RgbColor Color,
+    int LampsAmount,
+    bool Animated,
+    double FromBrightness,
+    double SettleDelaySeconds,
+    bool ReadsDeviceInfo);
+
 public sealed class LightController : INotifyPropertyChanged, IDisposable
 {
     private const int TransitionSteps = 5;
@@ -10,6 +21,7 @@ public sealed class LightController : INotifyPropertyChanged, IDisposable
     private static readonly double MinimumUiBrightness = (double)RobobloqConstants.MinimumBrightness / RobobloqConstants.MaximumBrightness;
 
     private readonly LightSettingsStore _settingsStore;
+    private readonly Func<PowerCommandRequest, Task<DeviceInfo>> _powerCommand;
     private readonly SemaphoreSlim _deviceSemaphore = new(1, 1);
     private CancellationTokenSource? _pollCancellation;
     private CancellationTokenSource? _brightnessDebounceCancellation;
@@ -21,8 +33,14 @@ public sealed class LightController : INotifyPropertyChanged, IDisposable
     private LightSettings _settings;
 
     public LightController(LightSettingsStore? settingsStore = null)
+        : this(settingsStore ?? new LightSettingsStore(), RunPowerCommandAsync)
     {
-        _settingsStore = settingsStore ?? new LightSettingsStore();
+    }
+
+    internal LightController(LightSettingsStore settingsStore, Func<PowerCommandRequest, Task<DeviceInfo>> powerCommand)
+    {
+        _settingsStore = settingsStore;
+        _powerCommand = powerCommand;
         _settings = _settingsStore.Load();
         _appliedColor = _settings.Color;
         _appliedBrightness = _settings.Brightness;
@@ -52,7 +70,7 @@ public sealed class LightController : INotifyPropertyChanged, IDisposable
     public void Stop()
     {
         _pollCancellation?.Cancel();
-        _brightnessDebounceCancellation?.Cancel();
+        CancelPendingAdjustments();
         try
         {
             _pollTask?.Wait(TimeSpan.FromSeconds(1));
@@ -64,13 +82,34 @@ public sealed class LightController : INotifyPropertyChanged, IDisposable
         _pollTask = null;
         _pollCancellation?.Dispose();
         _pollCancellation = null;
-        _brightnessDebounceCancellation?.Dispose();
-        _brightnessDebounceCancellation = null;
     }
 
     public async Task RefreshConnectionAsync()
     {
         await RefreshDevicePresenceAsync(force: true).ConfigureAwait(false);
+    }
+
+    public async Task PrepareForSystemSleepAsync()
+    {
+        CancelPendingAdjustments();
+        await SendPowerCommandAsync(CreatePowerCommandRequest(
+            targetOn: false,
+            animated: false,
+            settleDelaySeconds: 0.05,
+            readsDeviceInfo: false)).ConfigureAwait(false);
+    }
+
+    public async Task RestoreAfterSystemWakeAsync()
+    {
+        CancelPendingAdjustments();
+        if (!_settings.IsOn)
+        {
+            _settings.IsOn = true;
+            OnPropertyChanged(nameof(IsOn));
+        }
+
+        PersistState();
+        await ApplyPowerStateAsync().ConfigureAwait(false);
     }
 
     public async Task SetPowerAsync(bool enabled)
@@ -228,45 +267,40 @@ public sealed class LightController : INotifyPropertyChanged, IDisposable
 
     private async Task ApplyPowerStateAsync()
     {
-        var device = _connectedDevice;
-        var targetOn = _settings.IsOn;
-        var brightness = _settings.Brightness;
-        var color = _settings.Color;
-        var lampsAmount = _deviceInfo?.LampsAmount ?? DeviceSession.DefaultLampsAmount;
-        var animated = _settings.SmoothTransitions;
-        var fromBrightness = _appliedBrightness;
+        await SendPowerCommandAsync(CreatePowerCommandRequest(
+            targetOn: _settings.IsOn,
+            animated: _settings.SmoothTransitions,
+            settleDelaySeconds: 0.5,
+            readsDeviceInfo: true)).ConfigureAwait(false);
+    }
 
-        await RunDeviceCommandAsync(() =>
+    private Task SendPowerCommandAsync(PowerCommandRequest request)
+    {
+        return RunDeviceCommandAsync(async () =>
         {
-            var info = DeviceSession.WithTransport((transport, info) =>
-            {
-                if (targetOn)
-                {
-                    if (animated)
-                    {
-                        TurnOnSmoothly(transport, lampsAmount, color, brightness);
-                    }
-                    else
-                    {
-                        DeviceSession.TurnOn(transport, lampsAmount, color, brightness);
-                    }
-                }
-                else if (animated)
-                {
-                    TurnOffSmoothly(transport, lampsAmount, color, fromBrightness);
-                }
-                else
-                {
-                    DeviceSession.TurnOff(transport, lampsAmount);
-                }
-
-                return info;
-            }, device);
-
+            var info = await _powerCommand(request).ConfigureAwait(false);
             _deviceInfo = info;
-            _appliedBrightness = brightness;
-            _appliedColor = color;
-        }).ConfigureAwait(false);
+            _appliedBrightness = request.Brightness;
+            _appliedColor = request.Color;
+        });
+    }
+
+    private PowerCommandRequest CreatePowerCommandRequest(
+        bool targetOn,
+        bool animated,
+        double settleDelaySeconds,
+        bool readsDeviceInfo)
+    {
+        return new PowerCommandRequest(
+            _connectedDevice,
+            targetOn,
+            _settings.Brightness,
+            _settings.Color,
+            _deviceInfo?.LampsAmount ?? DeviceSession.DefaultLampsAmount,
+            animated,
+            _appliedBrightness,
+            settleDelaySeconds,
+            readsDeviceInfo);
     }
 
     private Task SendColorAsync()
@@ -330,8 +364,7 @@ public sealed class LightController : INotifyPropertyChanged, IDisposable
 
     private void DebounceBrightness(double value)
     {
-        _brightnessDebounceCancellation?.Cancel();
-        _brightnessDebounceCancellation?.Dispose();
+        CancelPendingAdjustments();
         var cancellation = new CancellationTokenSource();
         _brightnessDebounceCancellation = cancellation;
 
@@ -348,13 +381,26 @@ public sealed class LightController : INotifyPropertyChanged, IDisposable
         }, cancellation.Token);
     }
 
-    private async Task RunDeviceCommandAsync(Action command)
+    private void CancelPendingAdjustments()
+    {
+        var cancellation = _brightnessDebounceCancellation;
+        _brightnessDebounceCancellation = null;
+        cancellation?.Cancel();
+        cancellation?.Dispose();
+    }
+
+    private Task RunDeviceCommandAsync(Action command)
+    {
+        return RunDeviceCommandAsync(() => Task.Run(command));
+    }
+
+    private async Task RunDeviceCommandAsync(Func<Task> command)
     {
         await _deviceSemaphore.WaitAsync().ConfigureAwait(false);
         SetBusy(true);
         try
         {
-            await Task.Run(command).ConfigureAwait(false);
+            await command().ConfigureAwait(false);
         }
         catch (Exception exception)
         {
@@ -365,6 +411,60 @@ public sealed class LightController : INotifyPropertyChanged, IDisposable
         {
             SetBusy(false);
             _deviceSemaphore.Release();
+        }
+    }
+
+    private static Task<DeviceInfo> RunPowerCommandAsync(PowerCommandRequest request)
+    {
+        return Task.Run(() =>
+        {
+            if (request.ReadsDeviceInfo)
+            {
+                return DeviceSession.WithTransport((transport, info) =>
+                {
+                    RunPowerCommand(request, transport);
+                    return info;
+                }, request.Device, settleDelaySeconds: request.SettleDelaySeconds);
+            }
+
+            var discovered = request.Device ?? DeviceDiscovery.DiscoverPreferred();
+            if (discovered is null)
+            {
+                throw new DeviceTransportException(DeviceTransportError.DeviceNotFound);
+            }
+
+            using var transport = DeviceDiscovery.MakeTransport(discovered);
+            transport.Open();
+            if (request.SettleDelaySeconds > 0)
+            {
+                Thread.Sleep(TimeSpan.FromSeconds(request.SettleDelaySeconds));
+            }
+
+            RunPowerCommand(request, transport);
+            return DeviceSession.DefaultDeviceInfo();
+        });
+    }
+
+    private static void RunPowerCommand(PowerCommandRequest request, IDeviceTransport transport)
+    {
+        if (request.TargetOn)
+        {
+            if (request.Animated)
+            {
+                TurnOnSmoothly(transport, request.LampsAmount, request.Color, request.Brightness);
+            }
+            else
+            {
+                DeviceSession.TurnOn(transport, request.LampsAmount, request.Color, request.Brightness);
+            }
+        }
+        else if (request.Animated)
+        {
+            TurnOffSmoothly(transport, request.LampsAmount, request.Color, request.FromBrightness);
+        }
+        else
+        {
+            DeviceSession.TurnOff(transport, request.LampsAmount);
         }
     }
 

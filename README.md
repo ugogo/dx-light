@@ -71,6 +71,7 @@ Both apps expose the same controls:
 4. **Open at login** — macOS Login Items; Windows `HKCU\...\Run` (no admin required)
 5. **Smooth transitions** — short fades with few USB writes to keep the link responsive
 6. **Turn on when USB connects** — after the strip disappears and reconnects (e.g. KVM), the app marks state on and sends the on command. Disable to preserve the previous app power state on reconnect.
+7. **Sleep/wake handling** — the app sends an off command before system sleep and restores the light on wake.
 
 **macOS-only:** Option-click the menu bar icon to toggle power without opening the popover. If macOS prompts for login-item approval, enable DX Light under **System Settings → General → Login Items**.
 

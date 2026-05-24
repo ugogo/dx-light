@@ -1,4 +1,5 @@
 using DXLight.Core;
+using Microsoft.Win32;
 using System.ComponentModel;
 using System.Drawing.Drawing2D;
 using System.Runtime.InteropServices;
@@ -39,12 +40,14 @@ internal sealed class TrayApplicationContext : ApplicationContext
         };
 
         _controller.PropertyChanged += ControllerOnPropertyChanged;
+        SystemEvents.PowerModeChanged += SystemEventsOnPowerModeChanged;
         _controller.Start();
         UpdateTrayState();
     }
 
     protected override void ExitThreadCore()
     {
+        SystemEvents.PowerModeChanged -= SystemEventsOnPowerModeChanged;
         _notifyIcon.Visible = false;
         _notifyIcon.Dispose();
         _currentIcon?.Dispose();
@@ -75,6 +78,32 @@ internal sealed class TrayApplicationContext : ApplicationContext
     }
 
     private void ControllerOnPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (_uiContext is not null && SynchronizationContext.Current != _uiContext)
+        {
+            _uiContext.Post(_ => UpdateTrayState(), null);
+            return;
+        }
+
+        UpdateTrayState();
+    }
+
+    private void SystemEventsOnPowerModeChanged(object sender, PowerModeChangedEventArgs e)
+    {
+        switch (e.Mode)
+        {
+            case PowerModes.Suspend:
+                _controller.PrepareForSystemSleepAsync().GetAwaiter().GetResult();
+                PostUpdateTrayState();
+                break;
+            case PowerModes.Resume:
+                _controller.RestoreAfterSystemWakeAsync().GetAwaiter().GetResult();
+                PostUpdateTrayState();
+                break;
+        }
+    }
+
+    private void PostUpdateTrayState()
     {
         if (_uiContext is not null && SynchronizationContext.Current != _uiContext)
         {
